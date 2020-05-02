@@ -46,7 +46,7 @@ class Correlator(object):
 			self.D_C_ra, self.D_C_dec, self.D_C_redshift, self.D_C_weights = load_data_weighted(center_file)
 		else:
 			# runs cf on galaxy data
-			self.vote_threshold = 80
+			self.vote_threshold = 60
 			self._get_centers((self.D_G_ra, self.D_G_dec, self.D_G_redshift))
 
 		# more instance variables
@@ -362,25 +362,36 @@ class Correlator(object):
 		'''
 		# TODO: There's got to be a faster way to query shell-wise instead of
 		#		querying just spherically. Too inefficient rn...
+		# TODO: Construct kdtree over the longest set, either DG or DC.
+		#		This minimizes the number of queries.
 
 		# TODO: put D_G in a new method together with the D_C
 		# these serve to construct the kdtree_DG
 		D_G_xs, D_G_ys, D_G_zs = sky2cartesian(self.D_G_ra, self.D_G_dec, self.D_G_redshift, self.LUT_radii)
 		self.D_G = np.array([D_G_xs, D_G_ys, D_G_zs]).T
 
+		if len(self.D_C) > len(self.D_G): 
+			longer_dataset = self.D_C
+			shorter_dataset = self.D_G
+		else:
+			longer_dataset = self.D_G
+			shorter_dataset = self.D_C
+
+		# calculates leafsize of the kdtree based on length of dataset
+		leafsize_ = int(len(longer_dataset) // 100)
+
 		print('Calculating DD...')
 		stime = time.time()
 
 		self.DD = np.zeros((self.N_bins_s,))
-		kdtree_DG = KDTree(self.D_G, leafsize = 100)
-		neighbors_in_prev_sphere = sum([len(kdtree_DG.query_ball_point(center, self.s_lower_bound-self.d_s/2)) for center in self.D_C])
-		for i, s_ in enumerate(range(int(self.s_lower_bound), int(self.s_upper_bound)+1, int(self.d_s))):
-			s_bound = s_ + self.d_s/2.
-			neighbors_in_curr_sphere = sum([len(kdtree_DG.query_ball_point(center, s_bound)) for center in self.D_C])
-			self.DD[i] = neighbors_in_curr_sphere - neighbors_in_prev_sphere
-			neighbors_in_prev_sphere = neighbors_in_curr_sphere
-			print(i, s_, neighbors_in_curr_sphere, self.DD[i])
-		del kdtree_DG
+		kdtree = KDTree(longer_dataset, leafsize=leafsize_)
+		neighbors_in_prev_sphere = np.sum([len(kdtree.query_ball_point(center, self.s_lower_bound-self.d_s/2)) for center in shorter_dataset])
+		with Pool(initializer=setup_parallel_env_DD, initargs=(shorter_dataset, kdtree, self.d_s)) as pool:
+			results = pool.starmap(shell_scan_DD, enumerate(range(int(self.s_lower_bound), int(self.s_upper_bound)+1, int(self.d_s))))
+			for i, neighbors_in_curr_sphere in enumerate(results):
+				self.DD[i] = neighbors_in_curr_sphere - neighbors_in_prev_sphere
+				neighbors_in_prev_sphere = neighbors_in_curr_sphere
+		del kdtree
 
 		# TODO: delete these in the integration phase wrapper, not here
 		delattr(self, 'D_G')
@@ -390,6 +401,7 @@ class Correlator(object):
 		# DD = np.load('funcs/DD_{}.npy'.format(int(current_s)))
 		print(self.DD)
 		print(f'Finished in {(time.time()-stime)/60.} minutes')
+
 
 
 

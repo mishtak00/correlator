@@ -22,7 +22,7 @@ def plot_xi(bins_s: list, xi_s: list, filename: str, ds: float, xlims: tuple):
 	plt.ylabel(r"$\xi(s)$")
 	plt.xlim(xlims)
 	plt.plot(bins_s, xi_s)
-	plt.savefig(f'2pcf_{filename}_ds_{int(ds)}.png')
+	plt.savefig(f'plots_{filename}/2pcf_ds_{int(ds)}.png')
 	plt.show()
 
 
@@ -32,5 +32,5 @@ def plot_dist(bins_s: list, dist: list, distname: str, filename: str, ds: float,
 	plt.ylabel(f"{distname} $[count]$")
 	plt.xlim(xlims)
 	plt.plot(bins_s, dist)
-	plt.savefig(f'{distname}_{filename}_ds_{int(ds)}.png')
+	plt.savefig(f'plots_{filename}/{distname}_ds_{int(ds)}.png')
 	plt.show()

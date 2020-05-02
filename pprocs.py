@@ -42,11 +42,11 @@ def delta_scan(j: int):
 	# 	.format(N_G_a_d.shape[0], a_lower, a_higher, N_G_a_d.shape[1], d_lower, d_higher))
 	
 	# calculate the corresponding weights to each entry in the f_theta array
-	N_C_N_G_ad_field = np.ravel(N_C_a_d_entry * N_G_a_d[a_lower : a_higher, d_lower : d_higher])
+	N_C_N_G_ad_field = (N_C_a_d_entry * N_G_a_d[a_lower : a_higher, d_lower : d_higher]).flat
 	
 	# calculate the unweighted number of entries per each theta in the f_theta array
 	alpha_field, delta_field = np.meshgrid(alphas_rad[a_lower:a_higher], deltas_rad[d_lower:d_higher], sparse=True)
-	theta_idx_field = np.ravel(np.array((theta(alpha_C_rad, delta_C_rad, alpha_field, delta_field)-theta_min) // d_theta_rad, dtype=int).T)
+	theta_idx_field = np.array((theta(alpha_C_rad, delta_C_rad, alpha_field, delta_field)-theta_min) // d_theta_rad, dtype=int).T.flat
 	
 	# print(theta_idx_field)
 	# print('N_C_N_G_ad_field.shape:', N_C_N_G_ad_field.shape)
@@ -106,8 +106,8 @@ def galaxy_scan(alpha_G, delta_G, r_G, w_G):
 	# print('alpha_field: {}\ndelta_field: {}'.format(alpha_field, delta_field))
 
 	# TODO: why does this need to be transposed?
-	theta_idx_field = np.ravel(np.array((theta(alpha_G_rad, delta_G_rad, alpha_field, delta_field)-theta_min) // d_theta_rad, dtype=int).T)
-	w_G_N_C_ad_field = np.ravel(w_G * N_C_a_d[a_lower : a_higher, d_lower : d_higher])
+	theta_idx_field = np.array((theta(alpha_G_rad, delta_G_rad, alpha_field, delta_field)-theta_min) // d_theta_rad, dtype=int).T.flat
+	w_G_N_C_ad_field = (w_G * N_C_a_d[a_lower : a_higher, d_lower : d_higher]).flat
 	r_idx = int((r_G - r_G_min) // d_r)
 
 	g_theta_r_entry, _ = np.histogram(theta_idx_field, bins=theta_idx_edges, weights=w_G_N_C_ad_field)
@@ -157,8 +157,8 @@ def center_scan(alpha_C, delta_C, r_C, w_C):
 	# print('alpha_field: {}\ndelta_field: {}'.format(alpha_field, delta_field))
 
 	# TODO: use iterator ndarray.flat instead of ravel. flat() guarantees an iterator on the original object, whereas ravel might copy the array 
-	theta_idx_field = np.ravel(np.array((theta(alpha_C_rad, delta_C_rad, alpha_field, delta_field)-theta_min) // d_theta_rad, dtype=int).T)
-	w_C_N_G_ad_field = np.ravel(w_C * N_G_a_d[a_lower : a_higher, d_lower : d_higher])
+	theta_idx_field = np.array((theta(alpha_C_rad, delta_C_rad, alpha_field, delta_field)-theta_min) // d_theta_rad, dtype=int).T.flat
+	w_C_N_G_ad_field = (w_C * N_G_a_d[a_lower : a_higher, d_lower : d_higher]).flat
 	r_idx = int((r_C - r_C_min) // d_r)
 
 	g_theta_r_CG_entry, _ = np.histogram(theta_idx_field, bins=theta_idx_edges, weights=w_C_N_G_ad_field)
@@ -166,7 +166,20 @@ def center_scan(alpha_C, delta_C, r_C, w_C):
 	return g_theta_r_CG_entry, r_idx
 
 
+def setup_parallel_env_DD(shorter_dataset_, kdtree_, d_s_):
+	global shorter_dataset
+	shorter_dataset = shorter_dataset_
+	global kdtree
+	kdtree = kdtree_
+	global d_s
+	d_s = d_s_
 
+
+def shell_scan_DD(i, s_):
+	s_bound = s_ + d_s/2.
+	neighbors_in_curr_sphere = np.sum(np.array([len(kdtree.query_ball_point(center, s_bound)) for center in shorter_dataset]))
+	print(i, s_, neighbors_in_curr_sphere)
+	return neighbors_in_curr_sphere
 
 
 
