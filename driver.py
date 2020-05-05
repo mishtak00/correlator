@@ -4,7 +4,8 @@ from correlator import Correlator
 from utils import *
 import numpy as np
 
-
+# TODO: allow saving and loading of singular distributions
+# TODO: link verbose arg with printout in correlator
 
 def main():
 	parser = ArgumentParser(description=" '\./'\./'\./'\./'\./'\./ Correlator \./'\./'\./'\./'\./'\./' ")
@@ -27,7 +28,9 @@ def main():
 		except FileExistsError:
 			pass
 
-	c = Correlator(args.file, params_file=args.params_file, save=args.save)
+	c = Correlator(args.file, center_file=args.center_file, params_file=args.params_file, save=args.save)
+	# c.plot_input_data_histogram('RA')
+
 	c.make_DD()
 	c.make_randoms()
 	c.make_f_theta()

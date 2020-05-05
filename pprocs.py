@@ -46,8 +46,9 @@ def delta_scan(j: int):
 	
 	# calculate the unweighted number of entries per each theta in the f_theta array
 	alpha_field, delta_field = np.meshgrid(alphas_rad[a_lower:a_higher], deltas_rad[d_lower:d_higher], sparse=True)
+	# print("size of alpha field: {}\nsize of delta field: \n{}\n".format(len(alpha_field[0]), len(delta_field)))
 	theta_idx_field = np.array((theta(alpha_C_rad, delta_C_rad, alpha_field, delta_field)-theta_min) // d_theta_rad, dtype=int).T.flat
-	
+	# print("size theta index field: {}\n".format(theta_idx_field.shape))
 	# print(theta_idx_field)
 	# print('N_C_N_G_ad_field.shape:', N_C_N_G_ad_field.shape)
 	# print('theta_idx_field.shape:', theta_idx_field.shape)
@@ -156,7 +157,6 @@ def center_scan(alpha_C, delta_C, r_C, w_C):
 	alpha_field, delta_field = np.meshgrid(alphas_rad[a_lower:a_higher], deltas_rad[d_lower:d_higher], sparse=True)
 	# print('alpha_field: {}\ndelta_field: {}'.format(alpha_field, delta_field))
 
-	# TODO: use iterator ndarray.flat instead of ravel. flat() guarantees an iterator on the original object, whereas ravel might copy the array 
 	theta_idx_field = np.array((theta(alpha_C_rad, delta_C_rad, alpha_field, delta_field)-theta_min) // d_theta_rad, dtype=int).T.flat
 	w_C_N_G_ad_field = (w_C * N_G_a_d[a_lower : a_higher, d_lower : d_higher]).flat
 	r_idx = int((r_C - r_C_min) // d_r)
@@ -165,21 +165,6 @@ def center_scan(alpha_C, delta_C, r_C, w_C):
 
 	return g_theta_r_CG_entry, r_idx
 
-
-def setup_parallel_env_DD(shorter_dataset_, kdtree_, d_s_):
-	global shorter_dataset
-	shorter_dataset = shorter_dataset_
-	global kdtree
-	kdtree = kdtree_
-	global d_s
-	d_s = d_s_
-
-
-def shell_scan_DD(i, s_):
-	s_bound = s_ + d_s/2.
-	neighbors_in_curr_sphere = np.sum(np.array([len(kdtree.query_ball_point(center, s_bound)) for center in shorter_dataset]))
-	print(i, s_, neighbors_in_curr_sphere)
-	return neighbors_in_curr_sphere
 
 
 

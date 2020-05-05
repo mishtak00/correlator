@@ -39,18 +39,20 @@ class Correlator(object):
 		self.s_lower_bound = 5.
 		self.s_upper_bound = 205.
 		self.current_s = 110.
-		self.d_s = 10.
+		self.d_s = 5.
 
 		# loads center data arrays
 		if center_file is not None:
 			self.D_C_ra, self.D_C_dec, self.D_C_redshift, self.D_C_weights = load_data_weighted(center_file)
+			self.D_C_ra += 180. # TODO: fix this
+			self.D_C = np.array(sky2cartesian(self.D_C_ra, self.D_C_dec, self.D_C_redshift, self.LUT_radii)).T
 		else:
 			# runs cf on galaxy data
-			self.vote_threshold = 60
+			self.vote_threshold = 80
 			self._get_centers((self.D_G_ra, self.D_G_dec, self.D_G_redshift))
 
 		# more instance variables
-		self.bins_s = np.arange(self.s_lower_bound, self.s_upper_bound+1, self.d_s, dtype=int)
+		self.bins_s = np.arange(self.s_lower_bound, self.s_upper_bound+self.d_s, self.d_s, dtype=int)
 		self.N_bins_s = len(self.bins_s)
 		self.s_idx_edges = range(self.N_bins_s+1)
 
@@ -351,13 +353,13 @@ class Correlator(object):
 
 	def make_DD(self):
 		'''
-		Counts the galaxies that are within a spherical shell of width d_s around current_s.
-		The kdtree query below selects all nearest neighbors in a sphere of select radius
-		around a point, so to get a shell of galaxies around a point, it subtracts the
-		number of galaxies returned from the previous query. Esentially, the queries are 
-		spherical, and deleting the data of a previous, smaller cocentric sphere from the 
-		current one allows us to achieve a shell effect while querying.
-		We start with a sphere of radius d_s/2 less than our lower s bound to obtain the 
+		Counts galaxy-center pairs for galaxies and centers separated by (s-ds/2 , s+ds/2) 
+		for each s in the correlator. Each query below selects all nearest neighbor pairs 
+		separated by s+ds/2, so to get pairs separated by exactly (s-ds/2 , s+ds/2), 
+		it subtracts the number of galaxies returned from the previous query at s-ds/2.
+		Esentially, the queries are spherical, and deleting the data of a previous, 
+		smaller cocentric sphere from the current one achieves a shell effect while querying.
+		We start with a sphere of radius ds/2 less than our lower s bound to obtain the 
 		first spherical cutoff for the subsequent queries.
 		'''
 		# TODO: There's got to be a faster way to query shell-wise instead of
@@ -366,34 +368,41 @@ class Correlator(object):
 		#		This minimizes the number of queries.
 
 		# TODO: put D_G in a new method together with the D_C
-		# these serve to construct the kdtree_DG
+		# these serve to construct the kdtrees
 		D_G_xs, D_G_ys, D_G_zs = sky2cartesian(self.D_G_ra, self.D_G_dec, self.D_G_redshift, self.LUT_radii)
 		self.D_G = np.array([D_G_xs, D_G_ys, D_G_zs]).T
 
-		if len(self.D_C) > len(self.D_G): 
+		if len(self.D_C) > len(self.D_G):
 			longer_dataset = self.D_C
 			shorter_dataset = self.D_G
 		else:
 			longer_dataset = self.D_G
 			shorter_dataset = self.D_C
 
-		# calculates leafsize of the kdtree based on length of dataset
-		leafsize_ = int(len(longer_dataset) // 100)
+		# calculates leafsize of the kdtrees based on length of datasets
+		# l for long, s for short
+		l_leafsize = int(len(longer_dataset) // 10000)
+		l_leafsize = l_leafsize if l_leafsize >= 10 else 10
+		s_leafsize = int(len(shorter_dataset) // 10000)
+		s_leafsize = s_leafsize if s_leafsize >= 10 else 10
 
 		print('Calculating DD...')
 		stime = time.time()
 
 		self.DD = np.zeros((self.N_bins_s,))
-		kdtree = KDTree(longer_dataset, leafsize=leafsize_)
-		neighbors_in_prev_sphere = np.sum([len(kdtree.query_ball_point(center, self.s_lower_bound-self.d_s/2)) for center in shorter_dataset])
-		with Pool(initializer=setup_parallel_env_DD, initargs=(shorter_dataset, kdtree, self.d_s)) as pool:
-			results = pool.starmap(shell_scan_DD, enumerate(range(int(self.s_lower_bound), int(self.s_upper_bound)+1, int(self.d_s))))
-			for i, neighbors_in_curr_sphere in enumerate(results):
-				self.DD[i] = neighbors_in_curr_sphere - neighbors_in_prev_sphere
-				neighbors_in_prev_sphere = neighbors_in_curr_sphere
-		del kdtree
+		l_kdtree = KDTree(longer_dataset, leafsize=l_leafsize)
+		s_kdtree = KDTree(shorter_dataset, leafsize=s_leafsize)
 
-		# TODO: delete these in the integration phase wrapper, not here
+		neighbors_in_prev_sphere = s_kdtree.count_neighbors(l_kdtree, self.s_lower_bound-self.d_s/2.)
+		s_upper_bounds = self.bins_s+self.d_s/2
+		results = s_kdtree.count_neighbors(l_kdtree, s_upper_bounds)
+		print(f'len of result: {len(results)}\nlen of DD: {len(self.DD)}')
+		for i, neighbors_in_curr_sphere in enumerate(results):
+			self.DD[i] = neighbors_in_curr_sphere - neighbors_in_prev_sphere
+			neighbors_in_prev_sphere = neighbors_in_curr_sphere
+		del l_kdtree, s_kdtree
+
+		# TODO: delete these in the integration stage wrapper, not here
 		delattr(self, 'D_G')
 		delattr(self, 'D_C')
 		if self.save:
@@ -401,7 +410,6 @@ class Correlator(object):
 		# DD = np.load('funcs/DD_{}.npy'.format(int(current_s)))
 		print(self.DD)
 		print(f'Finished in {(time.time()-stime)/60.} minutes')
-
 
 
 
@@ -448,6 +456,10 @@ class Correlator(object):
 			xlims = (self.s_lower_bound-5, self.s_upper_bound+5)
 
 		plot_dist(self.bins_s, dist, distname, self.filename, self.d_s, xlims)
+
+
+	def plot_input_data_histogram(self, dataset_name: str):
+		plot_data_hist(self.D_G_ra, self.D_C_ra, self.filename)
 
 
 

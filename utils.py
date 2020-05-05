@@ -48,8 +48,7 @@ def z2r(z: float, cosmology: tuple) -> float:
 
 def interpolate_r_z(redshift_min: float, redshift_max: float, cosmology: tuple):
 	# TODO: automate getting the number of spacings instead of setting it to 100
-	# TODO: don't need to pass whole redshift array
-	#Creates tick values for the given range of redshifts
+	# Creates tick values for the given range of redshifts
 	redshift_ticks = np.linspace(redshift_min, redshift_max, 100)
 	radii_ticks = np.array([z2r(z, cosmology) for z in redshift_ticks])
 	# creates lookup tables with interpolated radii values
@@ -85,7 +84,8 @@ def theta(a1, d1, a2, d2):
 	"""
 	cos = np.nan_to_num(np.cos(d1)*np.cos(d2)*np.cos(a1-a2) + np.sin(d1)*np.sin(d2))
 	arccos_arg = 0.999 if cos>=1 else (-0.999 if cos<=-1 else cos)
-	# return np.rad2deg(np.arccos(arccos_arg))
 	return np.arccos(arccos_arg)
+
+
 
 
