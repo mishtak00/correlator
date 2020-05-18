@@ -155,7 +155,7 @@ class Correlator(object):
 									for d in range(D_C_grid.shape[1])] 
 								for a in range(D_C_grid.shape[0])])
 		self.P_C_r = np.array([np.sum(D_C_grid[:, :, r]) 
-								for r in range(D_C_grid.shape[2])]) \
+								for r in range(D_C_grid.shape[2])])
 							/ np.sum(self.D_C_weights)
 
 		if self.printout:
