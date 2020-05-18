@@ -1,3 +1,20 @@
+"""
+Copyright (C) 2020 Gebri Mishtaku
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses.
+"""
+
 import os
 import json
 import numpy as np
@@ -16,10 +33,12 @@ import time
 
 class Correlator(object):
 
-	def __init__(self, galaxy_file: str, center_file: str = None, gd_wtd: bool = False, params_file: str = None, save: bool = False, printout: bool = False):
+	def __init__(self, galaxy_file: str, center_file: str = None, gd_wtd: bool = False, 
+		params_file: str = None, save: bool = False, printout: bool = False):
 
 		self.save = save
 		self.filename = galaxy_file.split('.')[0]
+		self.printout = printout
 
 		# loads galaxy data arrays
 		if not gd_wtd:
@@ -39,13 +58,14 @@ class Correlator(object):
 		self.s_lower_bound = 5.
 		self.s_upper_bound = 205.
 		self.current_s = 110.
-		self.d_s = 5.
+		self.d_s = 10.
 
 		# loads center data arrays
 		if center_file is not None:
 			self.D_C_ra, self.D_C_dec, self.D_C_redshift, self.D_C_weights = load_data_weighted(center_file)
 			self.D_C_ra += 180. # TODO: fix this
 			self.D_C = np.array(sky2cartesian(self.D_C_ra, self.D_C_dec, self.D_C_redshift, self.LUT_radii)).T
+			self.D_C_radii = self.LUT_radii(self.D_C_redshift)
 		else:
 			# runs cf on galaxy data
 			self.vote_threshold = 80
@@ -71,9 +91,9 @@ class Correlator(object):
 		self.theta_edges = np.linspace(self.theta_min, self.theta_max + self.d_theta_rad, self.N_bins_theta + 1, endpoint=True)
 		self.theta_idx_edges = range(self.N_bins_theta+1)
 
-		if printout:
-			print(f'theta_max: {self.theta_max}\nd_theta: {self.d_theta_rad}\ntheta_idx_max: {self.theta_idx_max}\n\
-				N_bins_theta: {self.N_bins_theta}\nf_theta: {self.f_theta}\n')
+		if self.printout:
+			print(f'theta_max: {self.theta_max}\nd_theta: {self.d_theta_rad}')
+			print(f'theta_idx_max: {self.theta_idx_max}\nN_bins_theta: {self.N_bins_theta}')
 
 		self.stime = time.time()
 
@@ -81,7 +101,7 @@ class Correlator(object):
 	# TODO: write repr here
 
 
-	def make_randoms(self, printout: bool = False):
+	def make_randoms(self):
 		"""Constructs the probability maps over alpha&delta and r. """
 
 		# define the angular bins d_alpha and d_theta_rad
@@ -98,12 +118,17 @@ class Correlator(object):
 
 		# TODO: check that these marginalization are okay to do as a way to project into alpha&delta and r
 		# project the raw data onto the alpha-delta and r distributions
-		D_G_grid, D_G_grid_bin_edges = np.histogramdd((self.D_G_ra, self.D_G_dec, self.D_G_radii), bins=(D_G_N_bins_alpha, D_G_N_bins_delta, self.D_G_N_bins_r), weights = self.D_G_weights)
+		D_G_grid, D_G_grid_bin_edges = np.histogramdd((self.D_G_ra, self.D_G_dec, self.D_G_radii), 
+			bins=(D_G_N_bins_alpha, D_G_N_bins_delta, self.D_G_N_bins_r), weights = self.D_G_weights)
 
 		# Galaxy randoms
-		self.N_G_a_d = np.array([[np.sum(D_G_grid[a, d, :]) for d in range(D_G_grid.shape[1])] for a in range(D_G_grid.shape[0])])
-		self.P_G_r = np.array([np.sum(D_G_grid[:, :, r]) for r in range(D_G_grid.shape[2])]) / np.sum(self.D_G_weights)
-		if printout:
+		self.N_G_a_d = np.array([[np.sum(D_G_grid[a, d, :]) 
+									for d in range(D_G_grid.shape[1])] 
+								for a in range(D_G_grid.shape[0])])
+		self.P_G_r = np.array([np.sum(D_G_grid[:, :, r]) 
+								for r in range(D_G_grid.shape[2])]) \
+							/ np.sum(self.D_G_weights)
+		if self.printout:
 			print('Gridded D_G shape:', D_G_grid.shape)
 		del D_G_grid
 
@@ -121,22 +146,27 @@ class Correlator(object):
 
 		# project the centers data onto the alpha-delta and r distributions
 		# NOTE: D_C_grid shares the space and its dimensions with D_G_grid
-		D_C_grid, _ = np.histogramdd((self.D_C_ra, self.D_C_dec, self.D_C_radii), bins=D_G_grid_bin_edges, weights = self.D_C_weights)
+		D_C_grid, _ = np.histogramdd((self.D_C_ra, self.D_C_dec, self.D_C_radii), 
+			bins=D_G_grid_bin_edges, weights = self.D_C_weights)
 		del D_G_grid_bin_edges
 
 		# Center randoms
-		self.N_C_a_d = np.array([[np.sum(D_C_grid[a, d, :]) for d in range(D_C_grid.shape[1])] for a in range(D_C_grid.shape[0])])
-		self.P_C_r = np.array([np.sum(D_C_grid[:, :, r]) for r in range(D_C_grid.shape[2])]) / np.sum(self.D_C_weights)
+		self.N_C_a_d = np.array([[np.sum(D_C_grid[a, d, :]) 
+									for d in range(D_C_grid.shape[1])] 
+								for a in range(D_C_grid.shape[0])])
+		self.P_C_r = np.array([np.sum(D_C_grid[:, :, r]) 
+								for r in range(D_C_grid.shape[2])]) \
+							/ np.sum(self.D_C_weights)
 
-		if printout:
-			print('Total votes: ', np.sum(D_C_weights))
+		if self.printout:
+			print('Total votes: ', np.sum(self.D_C_weights))
 			print('Gridded D_C shape:', D_C_grid.shape)
 
 		del D_C_grid
 
 
 
-	def make_f_theta(self, load: bool = False, printout: bool = False):
+	def make_f_theta(self, load: bool = False):
 
 		print('Calculating f_theta...')
 		stime = time.time()
@@ -180,8 +210,10 @@ class Correlator(object):
 			g_r_theta = np.zeros((self.D_G_N_bins_r, self.N_bins_theta)) # = g_theta_r.T
 			alpha_G_min, delta_G_min, r_G_min = self.D_G_ra.min(), self.D_G_dec.min(), self.D_G_radii.min()
 
-			with Pool(initializer=setup_parallel_env_gscan, initargs=(self.alphas_rad, self.deltas_rad, alpha_G_min, delta_G_min, r_G_min, \
-						self.d_alpha, self.d_delta, self.d_r, self.theta_idx_max, self.theta_min, self.d_theta_rad, self.N_C_a_d, self.theta_idx_edges)) as pool:
+			with Pool(initializer=setup_parallel_env_gscan, initargs=(self.alphas_rad, self.deltas_rad,
+				alpha_G_min, delta_G_min, r_G_min, self.d_alpha, self.d_delta, self.d_r, self.theta_idx_max,
+				self.theta_min, self.d_theta_rad, self.N_C_a_d, self.theta_idx_edges)) as pool:
+
 				results = pool.starmap(galaxy_scan, zip(self.D_G_ra, self.D_G_dec, self.D_G_radii, self.D_G_weights))
 				for result in results:
 					g_theta_r_entry, r_idx = result
@@ -204,8 +236,10 @@ class Correlator(object):
 		g_r_theta_CG = np.zeros((self.D_C_N_bins_r, self.N_bins_theta)) # = g_theta_r_CG.T
 		alpha_C_min, delta_C_min, r_C_min = self.D_C_ra.min(), self.D_C_dec.min(), self.D_C_radii.min()
 
-		with Pool(initializer=setup_parallel_env_cscan, initargs=(self.alphas_rad, self.deltas_rad, alpha_C_min, delta_C_min, r_C_min, \
-					self.d_alpha, self.d_delta, self.d_r, self.theta_idx_max, self.theta_min, self.d_theta_rad, self.N_G_a_d, self.theta_idx_edges)) as pool:
+		with Pool(initializer=setup_parallel_env_cscan, initargs=(self.alphas_rad, self.deltas_rad,
+			alpha_C_min, delta_C_min, r_C_min, self.d_alpha, self.d_delta, self.d_r, self.theta_idx_max,
+			self.theta_min, self.d_theta_rad, self.N_G_a_d, self.theta_idx_edges)) as pool:
+
 			results = pool.starmap(center_scan, zip(self.D_C_ra, self.D_C_dec, self.D_C_radii, self.D_C_weights))
 			for result in results:
 				g_theta_r_CG_entry, r_idx = result
@@ -366,7 +400,7 @@ class Correlator(object):
 		#		querying just spherically. Too inefficient rn...
 		# TODO: Construct kdtree over the longest set, either DG or DC.
 		#		This minimizes the number of queries.
-
+		
 		# TODO: put D_G in a new method together with the D_C
 		# these serve to construct the kdtrees
 		D_G_xs, D_G_ys, D_G_zs = sky2cartesian(self.D_G_ra, self.D_G_dec, self.D_G_redshift, self.LUT_radii)
@@ -396,11 +430,12 @@ class Correlator(object):
 		neighbors_in_prev_sphere = s_kdtree.count_neighbors(l_kdtree, self.s_lower_bound-self.d_s/2.)
 		s_upper_bounds = self.bins_s+self.d_s/2
 		results = s_kdtree.count_neighbors(l_kdtree, s_upper_bounds)
-		print(f'len of result: {len(results)}\nlen of DD: {len(self.DD)}')
 		for i, neighbors_in_curr_sphere in enumerate(results):
 			self.DD[i] = neighbors_in_curr_sphere - neighbors_in_prev_sphere
 			neighbors_in_prev_sphere = neighbors_in_curr_sphere
 		del l_kdtree, s_kdtree
+
+		self.DD = np.average(self.D_C_weights) * self.DD
 
 		# TODO: delete these in the integration stage wrapper, not here
 		delattr(self, 'D_G')
@@ -482,12 +517,14 @@ class Correlator(object):
 
 		# this is where the magic happens: each bin at a radial distance of bao_radius from the
 		# kernel's center gets assigned a 1 and all other bins get a 0
-		kernel_grid = np.array([[[1 if (np.linalg.norm(np.array([i, j, k]) - kernel_center) >= inscribed_r_idx_units_lower_bound
-										and np.linalg.norm(np.array([i, j, k]) - kernel_center) < inscribed_r_idx_units_upper_bound)
+		kernel_grid = np.array([[[1 if (np.linalg.norm(np.array([i, j, k]) - kernel_center) 
+											>= inscribed_r_idx_units_lower_bound
+										and np.linalg.norm(np.array([i, j, k]) - kernel_center)
+											< inscribed_r_idx_units_upper_bound)
 								  else 0
-								  for i in range(kernel_bin_count)]
+								  for k in range(kernel_bin_count)]
 								 for j in range(kernel_bin_count)]
-								for k in range(kernel_bin_count)])
+								for i in range(kernel_bin_count)])
 
 		return kernel_grid
 
@@ -502,7 +539,8 @@ class Correlator(object):
 
 		# gets the 3d histogram (density_grid) and the grid bin coordintes in cartesian (grid_edges)
 		galaxies_cartesian_coords = np.array(xyzs).T  # each galaxy is represented by (x, y, z)
-		bin_counts_3d = np.array([np.ceil((xyzs[i].max() - xyzs[i].min()) / grid_spacing) for i in range(len(xyzs))], dtype=int)
+		bin_counts_3d = np.array([np.ceil((xyzs[i].max() - xyzs[i].min()) / grid_spacing)
+									for i in range(len(xyzs))], dtype=int)
 		density_grid, observed_grid_edges = np.histogramdd(galaxies_cartesian_coords, bins=bin_counts_3d)
 
 		# # subtracts the background
@@ -531,9 +569,11 @@ class Correlator(object):
 		self.D_C_weights = found_centers_grid[found_centers_grid > self.vote_threshold]
 		centers_indices = np.asarray(found_centers_grid > self.vote_threshold).nonzero()
 		del found_centers_grid
-		found_centers_bin_centers = np.array([(found_centers_bin_edges[i][:-1] + found_centers_bin_edges[i][1:]) / 2 for i in range(len(found_centers_bin_edges))])
+		found_centers_bin_centers = np.array([(found_centers_bin_edges[i][:-1] + found_centers_bin_edges[i][1:]) / 2
+												for i in range(len(found_centers_bin_edges))])
 		del found_centers_bin_edges
-		D_C_xyzs = np.array([found_centers_bin_centers[i][centers_indices[i]] for i in range(len(centers_indices))])
+		D_C_xyzs = np.array([found_centers_bin_centers[i][centers_indices[i]]
+								for i in range(len(centers_indices))])
 		self.D_C_ra, self.D_C_dec, self.D_C_redshift, self.D_C_radii = cartesian2sky(*D_C_xyzs, self.LUT_redshifts)
 		
 		# serves for the kdtree step of DD construction
