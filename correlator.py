@@ -63,17 +63,10 @@ class Correlator(object):
 		# loads center data arrays
 		if center_file is not None:
 			self.D_C_ra, self.D_C_dec, self.D_C_redshift, self.D_C_weights = load_data_weighted(center_file)
-
-			self.D_G_ra -= 360
-
-			# fix = (self.D_G_ra.max()+self.D_G_ra.min())/2; print(fix)
-			fix = np.round((self.D_G_ra.min()+self.D_G_ra.max())/2 //90) *90; print(fix)
-			self.D_C_ra += fix # TODO: fix this
-
-
 			self.D_C = np.array(sky2cartesian(self.D_C_ra, self.D_C_dec, self.D_C_redshift, self.LUT_radii)).T
 			self.D_C_radii = self.LUT_radii(self.D_C_redshift)
 		else:
+			# TODO: only for dev phase, REMOVE after
 			# runs cf on galaxy data
 			self.vote_threshold = 80
 			self._get_centers((self.D_G_ra, self.D_G_dec, self.D_G_redshift))

@@ -54,8 +54,8 @@ def main():
 
 	c = Correlator(args.file, center_file=args.center_file, params_file=args.params_file, 
 		save=args.save, printout=args.verbose)
-	# c.plot_input_data_histogram('RA')
 
+	# c.plot_input_data_histogram('RA')
 	c.make_DD()
 	c.make_randoms()
 	c.make_f_theta()
