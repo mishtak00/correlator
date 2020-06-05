@@ -55,7 +55,7 @@ def plot_dist(bins_s: list, dist: list, distname: str, filename: str, ds: float,
 
 def plot_data_hist(galaxy_data: list, center_data: list, filename: str):
 	plt.hist(galaxy_data, label='Galaxies RA')
-	plt.hist(center_data, label='Centers RA')
+	plt.hist(center_data, label='Centers RA', histtype='step')
 	plt.title('Galaxy and center counts by RA')
 	plt.xlabel(r'RA $[\degree]$')
 	# # plt.hist(D_G_dec, label='Galaxies DEC')

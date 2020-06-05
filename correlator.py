@@ -63,7 +63,14 @@ class Correlator(object):
 		# loads center data arrays
 		if center_file is not None:
 			self.D_C_ra, self.D_C_dec, self.D_C_redshift, self.D_C_weights = load_data_weighted(center_file)
-			self.D_C_ra += 180. # TODO: fix this
+
+			self.D_G_ra -= 360
+
+			# fix = (self.D_G_ra.max()+self.D_G_ra.min())/2; print(fix)
+			fix = np.round((self.D_G_ra.min()+self.D_G_ra.max())/2 //90) *90; print(fix)
+			self.D_C_ra += fix # TODO: fix this
+
+
 			self.D_C = np.array(sky2cartesian(self.D_C_ra, self.D_C_dec, self.D_C_redshift, self.LUT_radii)).T
 			self.D_C_radii = self.LUT_radii(self.D_C_redshift)
 		else:
@@ -154,8 +161,9 @@ class Correlator(object):
 		self.N_C_a_d = np.array([[np.sum(D_C_grid[a, d, :]) 
 									for d in range(D_C_grid.shape[1])] 
 								for a in range(D_C_grid.shape[0])])
+		# TODO: this should be a weighted sum
 		self.P_C_r = np.array([np.sum(D_C_grid[:, :, r]) 
-								for r in range(D_C_grid.shape[2])])
+								for r in range(D_C_grid.shape[2])]) \
 							/ np.sum(self.D_C_weights)
 
 		if self.printout:
@@ -574,7 +582,10 @@ class Correlator(object):
 		del found_centers_bin_edges
 		D_C_xyzs = np.array([found_centers_bin_centers[i][centers_indices[i]]
 								for i in range(len(centers_indices))])
-		self.D_C_ra, self.D_C_dec, self.D_C_redshift, self.D_C_radii = cartesian2sky(*D_C_xyzs, self.LUT_redshifts)
+		self.D_C_ra, self.D_C_dec, self.D_C_redshift, self.D_C_radii = cartesian2sky(*D_C_xyzs, 
+																					self.LUT_redshifts,
+																					self.D_G_ra.min(),
+																					self.D_G_ra.max())
 		
 		# serves for the kdtree step of DD construction
 		self.D_C = D_C_xyzs.T
