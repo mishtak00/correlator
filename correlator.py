@@ -20,7 +20,6 @@ import json
 import numpy as np
 from scipy.interpolate import InterpolatedUnivariateSpline
 from scipy.signal import fftconvolve
-from scipy.spatial import KDTree
 from multiprocessing import Pool
 import matplotlib.pyplot as plt
 from utils import *
@@ -29,7 +28,7 @@ from plotcorr import *
 
 import time
 
-
+from sklearn.neighbors import KDTree
 
 class Correlator(object):
 
@@ -63,6 +62,7 @@ class Correlator(object):
 		# loads center data arrays
 		if center_file is not None:
 			self.D_C_ra, self.D_C_dec, self.D_C_redshift, self.D_C_weights = load_data_weighted(center_file)
+			self.D_C_ra += 180 # TODO: DEV ONLY, FIX THIS
 			self.D_C = np.array(sky2cartesian(self.D_C_ra, self.D_C_dec, self.D_C_redshift, self.LUT_radii)).T
 			self.D_C_radii = self.LUT_radii(self.D_C_redshift)
 		else:
@@ -386,57 +386,126 @@ class Correlator(object):
 
 
 
-	def make_DD(self):
-		'''
-		Counts galaxy-center pairs for galaxies and centers separated by (s-ds/2 , s+ds/2) 
-		for each s in the correlator. Each query below selects all nearest neighbor pairs 
-		separated by s+ds/2, so to get pairs separated by exactly (s-ds/2 , s+ds/2), 
-		it subtracts the number of galaxies returned from the previous query at s-ds/2.
-		Esentially, the queries are spherical, and deleting the data of a previous, 
-		smaller cocentric sphere from the current one achieves a shell effect while querying.
-		We start with a sphere of radius ds/2 less than our lower s bound to obtain the 
-		first spherical cutoff for the subsequent queries.
-		'''
-		# TODO: There's got to be a faster way to query shell-wise instead of
-		#		querying just spherically. Too inefficient rn...
-		# TODO: Construct kdtree over the longest set, either DG or DC.
-		#		This minimizes the number of queries.
+
+	# from scipy.spatial import KDTree
+
+	# def make_DD(self):
+	# 	'''
+	# 	Counts galaxy-center pairs for galaxies and centers separated by (s-ds/2 , s+ds/2) 
+	# 	for each s in the correlator. Each query below selects all nearest neighbor pairs 
+	# 	separated by s+ds/2, so to get pairs separated by exactly (s-ds/2 , s+ds/2), 
+	# 	it subtracts the number of galaxies returned from the previous query at s-ds/2.
+	# 	Esentially, the queries are spherical, and deleting the data of a previous, 
+	# 	smaller cocentric sphere from the current one achieves a shell effect while querying.
+	# 	We start with a sphere of radius ds/2 less than our lower s bound to obtain the 
+	# 	first spherical cutoff for the subsequent queries.
+	# 	'''
+	# 	# TODO: There's got to be a faster way to query shell-wise instead of
+	# 	#		querying just spherically. Too inefficient rn...
+	# 	# TODO: Construct kdtree over the longest set, either DG or DC.
+	# 	#		This minimizes the number of queries.
 		
-		# TODO: put D_G in a new method together with the D_C
-		# these serve to construct the kdtrees
+	# 	# TODO: put D_G in a new method together with the D_C
+	# 	# these serve to construct the kdtrees
+	# 	D_G_xs, D_G_ys, D_G_zs = sky2cartesian(self.D_G_ra, self.D_G_dec, self.D_G_redshift, self.LUT_radii)
+	# 	self.D_G = np.array([D_G_xs, D_G_ys, D_G_zs]).T
+
+	# 	if len(self.D_C) > len(self.D_G):
+	# 		longer_dataset = self.D_C
+	# 		shorter_dataset = self.D_G
+	# 	else:
+	# 		longer_dataset = self.D_G
+	# 		shorter_dataset = self.D_C
+
+	# 	# calculates leafsize of the kdtrees based on length of datasets
+	# 	# l for long, s for short
+	# 	l_leafsize = int(len(longer_dataset) // 10000)
+	# 	l_leafsize = l_leafsize if l_leafsize >= 10 else 10
+	# 	s_leafsize = int(len(shorter_dataset) // 10000)
+	# 	s_leafsize = s_leafsize if s_leafsize >= 10 else 10
+
+	# 	print('Calculating DD...')
+	# 	stime = time.time()
+
+	# 	self.DD = np.zeros((self.N_bins_s,))
+	# 	l_kdtree = KDTree(longer_dataset, leafsize=l_leafsize)
+	# 	s_kdtree = KDTree(shorter_dataset, leafsize=s_leafsize)
+
+	# 	neighbors_in_prev_sphere = s_kdtree.count_neighbors(l_kdtree, self.s_lower_bound-self.d_s/2.)
+	# 	s_upper_bounds = self.bins_s+self.d_s/2
+	# 	results = s_kdtree.count_neighbors(l_kdtree, s_upper_bounds)
+	# 	for i, neighbors_in_curr_sphere in enumerate(results):
+	# 		self.DD[i] = neighbors_in_curr_sphere - neighbors_in_prev_sphere
+	# 		neighbors_in_prev_sphere = neighbors_in_curr_sphere
+	# 	del l_kdtree, s_kdtree
+
+	# 	self.DD = np.average(self.D_C_weights) * self.DD
+
+	# 	# TODO: delete these in the integration stage wrapper, not here
+	# 	delattr(self, 'D_G')
+	# 	delattr(self, 'D_C')
+	# 	if self.save:
+	# 		np.save('funcs_{}/DD_{}_ds_{}.npy'.format(self.filename, int(self.current_s), int(self.d_s)), self.DD)
+	# 	# DD = np.load('funcs/DD_{}.npy'.format(int(current_s)))
+	# 	print(self.DD)
+	# 	print(f'Finished in {(time.time()-stime)/60.} minutes')
+
+
+
+
+
+
+	def make_DD(self):
+
 		D_G_xs, D_G_ys, D_G_zs = sky2cartesian(self.D_G_ra, self.D_G_dec, self.D_G_redshift, self.LUT_radii)
 		self.D_G = np.array([D_G_xs, D_G_ys, D_G_zs]).T
 
+		# build tree on longer dataset
 		if len(self.D_C) > len(self.D_G):
-			longer_dataset = self.D_C
-			shorter_dataset = self.D_G
+			longer_dataset, longer_wts = self.D_C, self.D_C_weights
+			shorter_dataset, shorter_wts = self.D_G, self.D_G_weights
 		else:
-			longer_dataset = self.D_G
-			shorter_dataset = self.D_C
+			longer_dataset, longer_wts = self.D_G, self.D_G_weights
+			shorter_dataset, shorter_wts = self.D_C, self.D_C_weights
 
-		# calculates leafsize of the kdtrees based on length of datasets
-		# l for long, s for short
-		l_leafsize = int(len(longer_dataset) // 10000)
-		l_leafsize = l_leafsize if l_leafsize >= 10 else 10
-		s_leafsize = int(len(shorter_dataset) // 10000)
-		s_leafsize = s_leafsize if s_leafsize >= 10 else 10
+		# calculates leafsize of the kdtree
+		leafsize = int(len(longer_dataset) // 10000)
+		leafsize = leafsize if leafsize >= 10 else 10
+
+		# uses default minkowski metric with p=2 (euclidian dist)
+		kdtree = KDTree(longer_dataset, leaf_size=leafsize)
+
+		# calculates smallest separation
+		s_edges = np.append(self.bins_s-self.d_s/2, [self.bins_s[-1]+self.d_s/2])
+		print(s_edges)
+		self.DD = np.zeros((self.N_bins_s,))
+
 
 		print('Calculating DD...')
 		stime = time.time()
 
-		self.DD = np.zeros((self.N_bins_s,))
-		l_kdtree = KDTree(longer_dataset, leafsize=l_leafsize)
-		s_kdtree = KDTree(shorter_dataset, leafsize=s_leafsize)
+		for i, p in enumerate(shorter_dataset):
 
-		neighbors_in_prev_sphere = s_kdtree.count_neighbors(l_kdtree, self.s_lower_bound-self.d_s/2.)
-		s_upper_bounds = self.bins_s+self.d_s/2
-		results = s_kdtree.count_neighbors(l_kdtree, s_upper_bounds)
-		for i, neighbors_in_curr_sphere in enumerate(results):
-			self.DD[i] = neighbors_in_curr_sphere - neighbors_in_prev_sphere
-			neighbors_in_prev_sphere = neighbors_in_curr_sphere
-		del l_kdtree, s_kdtree
+			if i%1000==0:
+				print(f'@ point {i} out of {len(shorter_dataset)}')
 
-		self.DD = np.average(self.D_C_weights) * self.DD
+			# calculates points up to max separation value all in one pass
+			idxs, dists = kdtree.query_radius(p.reshape(1, -1), s_edges[-1], return_distance=True)
+
+			# if i%1000==0:
+			# 	print(idxs[0])
+			# 	print(dists[0])
+
+			wts = longer_wts[idxs[0]] * shorter_wts[i]
+
+			# puts pairs in the correct separation bins given the distances from the kdtree
+			DD_entry, _ = np.histogram(dists[0], bins=s_edges, weights=wts)
+			self.DD += DD_entry
+
+		# correct counts from spheres to shells
+		# neighbors_in_prev_sphere = kdtree.query_radius(shorter_dataset, self.s_lower_bound-self.d_s/2.)
+		for i in range(len(self.DD)-1, 0, -1):
+			self.DD[i] -= self.DD[i-1]
 
 		# TODO: delete these in the integration stage wrapper, not here
 		delattr(self, 'D_G')
@@ -449,18 +518,19 @@ class Correlator(object):
 
 
 
+
 	def make_2pcf(self, load: bool = False):
 
 		if load:
 			self.bins_s = np.load('funcs_{}/bins_s_{}_ds_{}.npy'. format(self.filename, int(self.current_s), int(self.d_s)))
-			self.xi_s = np.load('funcs_{}/xi_s_{}_ds_{}.npy'.format(self.filename, int(self.current_s), int(self.d_s)))
+			self.xi_s = -np.load('funcs_{}/xi_s_{}_ds_{}.npy'.format(self.filename, int(self.current_s), int(self.d_s)))
 		else:
 
 			# TODO: NORMALIZE!!! or not... we don't really need it here.
 			# N_C_tot = np.sum(self.D_C_weights)
 			# N_G_tot = np.sum(self.D_G_weights)
 			# RR_norm = N_C_tot * N_G_tot
-			self.xi_s = -(self.DD - self.DC_RG - self.DG_RC + self.RR) / self.RR
+			# self.xi_s = -(self.DD - self.DC_RG - self.DG_RC + self.RR) / self.RR
 			print(self.xi_s)
 
 			if self.save:
