@@ -71,11 +71,11 @@ def main():
 			os.mkdir('plots_{}'.format(filename))
 		except FileExistsError:
 			pass
-		c.plot_2pcf()
 		c.plot_distribution('DD')
 		c.plot_distribution('RR')
 		c.plot_distribution('DC_RG')
 		c.plot_distribution('DG_RC')
+		c.plot_2pcf()
 
 
 

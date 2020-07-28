@@ -30,6 +30,8 @@ import time
 
 from sklearn.neighbors import KDTree
 
+
+
 class Correlator(object):
 
 	def __init__(self, galaxy_file: str, center_file: str = None, gd_wtd: bool = False, 
@@ -56,12 +58,16 @@ class Correlator(object):
 		# instance variables
 		self.s_lower_bound = 5.
 		self.s_upper_bound = 205.
+		# self.s_lower_bound = 110.
+		# self.s_upper_bound = 160.
 		self.current_s = 110.
 		self.d_s = 10.
 
 		# loads center data arrays
 		if center_file is not None:
 			self.D_C_ra, self.D_C_dec, self.D_C_redshift, self.D_C_weights = load_data_weighted(center_file)
+			# self.D_C_ra, self.D_C_dec, self.D_C_redshift = load_data(center_file)
+			# self.D_C_weights = np.ones(len(self.D_C_ra), dtype=float)
 			self.D_C_ra += 180 # TODO: DEV ONLY, FIX THIS
 			self.D_C = np.array(sky2cartesian(self.D_C_ra, self.D_C_dec, self.D_C_redshift, self.LUT_radii)).T
 			self.D_C_radii = self.LUT_radii(self.D_C_redshift)
@@ -76,7 +82,7 @@ class Correlator(object):
 		self.N_bins_s = len(self.bins_s)
 		self.s_idx_edges = range(self.N_bins_s+1)
 
-		# TODO: this should be multiplied by 1/2
+		# TODO: should this be multiplied by 1/2?
 		# define the angular bin d_theta_rad
 		self.d_theta_rad = self.d_s / self.D_G_radii.max()
 		self.d_theta_deg = np.rad2deg(self.d_theta_rad)
@@ -477,9 +483,9 @@ class Correlator(object):
 
 		# calculates smallest separation
 		s_edges = np.append(self.bins_s-self.d_s/2, [self.bins_s[-1]+self.d_s/2])
+		max_sep = s_edges[-1]
 		print(s_edges)
 		self.DD = np.zeros((self.N_bins_s,))
-
 
 		print('Calculating DD...')
 		stime = time.time()
@@ -490,22 +496,13 @@ class Correlator(object):
 				print(f'@ point {i} out of {len(shorter_dataset)}')
 
 			# calculates points up to max separation value all in one pass
-			idxs, dists = kdtree.query_radius(p.reshape(1, -1), s_edges[-1], return_distance=True)
-
-			# if i%1000==0:
-			# 	print(idxs[0])
-			# 	print(dists[0])
-
-			wts = longer_wts[idxs[0]] * shorter_wts[i]
+			idxs, dists = kdtree.query_radius(p.reshape(1, -1), max_sep, return_distance=True)
 
 			# puts pairs in the correct separation bins given the distances from the kdtree
+			# assigns correctly weighted galaxy pairs to their spherical shells
+			wts = longer_wts[idxs[0]] * shorter_wts[i]
 			DD_entry, _ = np.histogram(dists[0], bins=s_edges, weights=wts)
 			self.DD += DD_entry
-
-		# correct counts from spheres to shells
-		# neighbors_in_prev_sphere = kdtree.query_radius(shorter_dataset, self.s_lower_bound-self.d_s/2.)
-		for i in range(len(self.DD)-1, 0, -1):
-			self.DD[i] -= self.DD[i-1]
 
 		# TODO: delete these in the integration stage wrapper, not here
 		delattr(self, 'D_G')
@@ -523,20 +520,25 @@ class Correlator(object):
 
 		if load:
 			self.bins_s = np.load('funcs_{}/bins_s_{}_ds_{}.npy'. format(self.filename, int(self.current_s), int(self.d_s)))
-			self.xi_s = -np.load('funcs_{}/xi_s_{}_ds_{}.npy'.format(self.filename, int(self.current_s), int(self.d_s)))
+			self.xi_s = np.load('funcs_{}/xi_s_{}_ds_{}.npy'.format(self.filename, int(self.current_s), int(self.d_s)))
 		else:
+
+			self.DD = np.load('funcs_{}/DD_{}_ds_{}.npy'.format(self.filename, int(self.current_s), int(self.d_s)))
+			self.DC_RG = np.load('funcs_{}/DC_RG_{}_ds_{}.npy'.format(self.filename, int(self.current_s), int(self.d_s)))
+			self.DG_RC = np.load('funcs_{}/DG_RC_{}_ds_{}.npy'.format(self.filename, int(self.current_s), int(self.d_s)))
+			self.RR = np.load('funcs_{}/RR_{}_ds_{}.npy'.format(self.filename, int(self.current_s), int(self.d_s)))
+
 
 			# TODO: NORMALIZE!!! or not... we don't really need it here.
 			# N_C_tot = np.sum(self.D_C_weights)
 			# N_G_tot = np.sum(self.D_G_weights)
 			# RR_norm = N_C_tot * N_G_tot
-			# self.xi_s = -(self.DD - self.DC_RG - self.DG_RC + self.RR) / self.RR
+			self.xi_s = (self.DD - self.DC_RG - self.DG_RC + self.RR) / self.RR
 			print(self.xi_s)
 
 			if self.save:
 				np.save('funcs_{}/bins_s_{}_ds_{}.npy'.format(self.filename, int(self.current_s), int(self.d_s)), self.bins_s)
 				np.save('funcs_{}/xi_s_{}_ds_{}.npy'.format(self.filename, int(self.current_s), int(self.d_s)), self.xi_s)
-
 
 		print(f'Correlation finished in {(time.time()-self.stime)/60.} minutes')
 
