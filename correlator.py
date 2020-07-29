@@ -65,10 +65,19 @@ class Correlator(object):
 
 		# loads center data arrays
 		if center_file is not None:
-			self.D_C_ra, self.D_C_dec, self.D_C_redshift, self.D_C_weights = load_data_weighted(center_file)
-			# self.D_C_ra, self.D_C_dec, self.D_C_redshift = load_data(center_file)
-			# self.D_C_weights = np.ones(len(self.D_C_ra), dtype=float)
-			self.D_C_ra += 180 # TODO: DEV ONLY, FIX THIS
+			# cross-correlation
+			if galaxy_file!=center_file:
+				if self.printout:
+					print('Starting cross-correlation...')
+				self.D_C_ra, self.D_C_dec, self.D_C_redshift, self.D_C_weights = load_data_weighted(center_file)
+				# self.D_C_ra += 180 # TODO: DEV ONLY, FIX THIS
+			# autocorrelation
+			else:
+				if self.printout:
+					print('Starting autocorrelation...')
+				self.D_C_ra, self.D_C_dec, self.D_C_redshift = load_data(center_file)
+				self.D_C_weights = np.ones(len(self.D_C_ra), dtype=float)
+
 			self.D_C = np.array(sky2cartesian(self.D_C_ra, self.D_C_dec, self.D_C_redshift, self.LUT_radii)).T
 			self.D_C_radii = self.LUT_radii(self.D_C_redshift)
 		else:
